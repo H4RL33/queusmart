@@ -38,7 +38,8 @@ def init_db():
             name TEXT NOT NULL,
             phone TEXT,
             email TEXT,
-            preferred_contact TEXT
+            preferred_contact TEXT,
+            is_vulnerable INTEGER DEFAULT 0
         )
     ''')
 
@@ -52,6 +53,7 @@ def init_db():
             urgency TEXT NOT NULL CHECK(urgency IN ('Low', 'Medium', 'High', 'Critical')),
             status TEXT NOT NULL CHECK(status IN ('Open', 'In Progress', 'Waiting', 'Closed')),
             created_at TEXT NOT NULL,
+            closed_at TEXT,
             assigned_staff_id INTEGER,
             resolution TEXT,
             FOREIGN KEY (customer_id) REFERENCES customers (id),
@@ -84,6 +86,13 @@ def init_db():
             FOREIGN KEY (user_id) REFERENCES users (id)
         )
     ''')
+
+    # MIGRATION: Ensure tickets table has closed_at column (for existing DBs)
+    try:
+        c.execute("ALTER TABLE tickets ADD COLUMN closed_at TEXT")
+    except sqlite3.OperationalError:
+        # Column likely already exists
+        pass
 
     conn.commit()
     conn.close()
@@ -138,19 +147,58 @@ def authenticate_user(username, password):
             return dict(user)
     return None
 
+def seed_default_user():
+    """Seeds a default manager if 'admin' does not exist."""
+    conn = get_db_connection()
+    user = conn.execute("SELECT * FROM users WHERE username = 'admin'").fetchone()
+    
+    if not user:
+        # We need to call add_user via internal logic or direct SQL to avoid circular imports if add_user is used?
+        # add_user is defined above, so we can use it.
+        # However, add_user opens its own connection.
+        conn.close()
+        add_user("admin", "admin123", "Manager")
+        print("Default user created: admin / admin123")
+    else:
+        conn.close()
+
 # --- Customer Functions ---
 
-def add_customer(name, phone, email, preferred_contact):
+def add_customer(name, phone, email, preferred_contact, is_vulnerable=False):
     """Adds a new customer."""
     conn = get_db_connection()
     cursor = conn.execute(
-        "INSERT INTO customers (name, phone, email, preferred_contact) VALUES (?, ?, ?, ?)",
-        (name, phone, email, preferred_contact)
+        "INSERT INTO customers (name, phone, email, preferred_contact, is_vulnerable) VALUES (?, ?, ?, ?, ?)",
+        (name, phone, email, preferred_contact, 1 if is_vulnerable else 0)
     )
     conn.commit()
     customer_id = cursor.lastrowid
     conn.close()
     return customer_id
+
+def update_customer(customer_id, name, phone, email, preferred_contact, is_vulnerable):
+    """Updates customer details."""
+    conn = get_db_connection()
+    conn.execute(
+        "UPDATE customers SET name=?, phone=?, email=?, preferred_contact=?, is_vulnerable=? WHERE id=?",
+        (name, phone, email, preferred_contact, 1 if is_vulnerable else 0, customer_id)
+    )
+    conn.commit()
+    conn.close()
+
+def delete_customer(customer_id):
+    """Deletes a customer."""
+    conn = get_db_connection()
+    try:
+        # Note: Foreign Key constraints might block this if tickets/appointments exist.
+        # SQLite foreign_keys is ON. Cascade delete is NOT set in schema.
+        # We should probably fail if data exists, to preserve history.
+        conn.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError("Cannot delete customer with existing tickets or appointments.")
+    conn.close()
 
 def search_customers(query):
     """Searches customers by name, phone, or email."""
@@ -203,6 +251,14 @@ def update_ticket(ticket_id, status=None, assigned_staff_id=None, resolution=Non
     if resolution:
         fields.append("resolution = ?")
         values.append(resolution)
+    
+    # Auto-set closed_at if status is changing to Closed
+    if status == "Closed":
+        fields.append("closed_at = ?")
+        values.append(datetime.datetime.now().isoformat())
+    elif status and status != "Closed":
+        fields.append("closed_at = ?")
+        values.append(None)
         
     if not fields:
         conn.close()
@@ -220,10 +276,17 @@ def update_ticket(ticket_id, status=None, assigned_staff_id=None, resolution=Non
     conn.close()
     return True
 
+def delete_ticket(ticket_id):
+    """Deletes a ticket."""
+    conn = get_db_connection()
+    conn.execute("DELETE FROM tickets WHERE id = ?", (ticket_id,))
+    conn.commit()
+    conn.close()
+
 def get_tickets(status_filter=None, staff_filter=None):
     """Retrieves tickets with optional filters."""
     conn = get_db_connection()
-    query = "SELECT t.*, c.name as customer_name FROM tickets t JOIN customers c ON t.customer_id = c.id"
+    query = "SELECT t.*, c.name as customer_name, c.is_vulnerable FROM tickets t JOIN customers c ON t.customer_id = c.id"
     params = []
     conditions = []
     
@@ -238,6 +301,20 @@ def get_tickets(status_filter=None, staff_filter=None):
         query += " WHERE " + " AND ".join(conditions)
         
     rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def search_tickets(query):
+    """Searches tickets by description or customer name."""
+    conn = get_db_connection()
+    q = f"%{query}%"
+    sql = """
+        SELECT t.*, c.name as customer_name, c.is_vulnerable 
+        FROM tickets t 
+        JOIN customers c ON t.customer_id = c.id 
+        WHERE t.description LIKE ? OR c.name LIKE ?
+    """
+    rows = conn.execute(sql, (q, q)).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
@@ -282,6 +359,13 @@ def create_appointment(customer_id, staff_id, start_time, duration_minutes, reas
         
     conn.close()
     return appt_id
+
+def delete_appointment(appt_id):
+    """Deletes an appointment."""
+    conn = get_db_connection()
+    conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
+    conn.commit()
+    conn.close()
 
 def get_appointments_by_staff(staff_id):
     """Gets appointments for a specific staff member."""

@@ -1,0 +1,51 @@
+# QueueSmart Project TODO List
+
+## Phase 1: Setup & Core Backend [DONE]
+- [x] Analyze Project Brief & Create Instructions (GEMINI.md)
+- [x] Design Database Schema (ERD/Schema)
+- [x] Implement Database Module (src/queuesmart/database.py)
+    - [x] User Authentication (Hash + Salt)
+    - [x] Customer Table & CRUD
+    - [x] Ticket Table & CRUD
+    - [x] Appointment Table & CRUD
+    - [x] Appointment Clash Detection Logic
+    - [x] Audit Logging System
+- [x] Implement Priority Scoring Logic (Business Rules)
+    - [x] Calculate base score (Critical/High)
+    - [x] Calculate aging bonus (+1 per hour > 24h)
+    - [x] Calculate category bonus (+10 Housing)
+    - [x] Calculate vulnerability bonus (+15)
+    - [x] Ticket sorting function
+
+## Phase 2: User Interface (CLI) [DONE]
+- [x] Main Application Loop (Menu System)
+- [x] Authentication Module
+    - [x] Login Prompt
+    - [x] Role check
+- [x] Dashboard / Main Menu
+    - [x] View Ticket List (ASCII Table)
+    - [x] View Staff Schedule
+- [x] Customer Management CLI
+    - [x] Add Customer Input Flow
+    - [x] Search & View Customer History
+- [x] Ticket Management CLI
+    - [x] Create Ticket Input Flow
+    - [x] Update Ticket Status
+    - [x] Assign Staff
+- [x] Appointment Management CLI
+    - [x] Book Appointment Input Flow
+    - [x] View Schedule
+
+## Phase 3: Reporting & Exports [DONE]
+- [x] Reporting Module
+    - [x] Query: Tickets created per week by category
+    - [x] Query: Average time to close by category
+    - [x] Query: Top 5 busiest days/times
+- [x] Export Functionality
+    - [x] Export reports to CSV
+
+## Phase 4: Final Polish & Delivery [TODO]
+- [ ] Code Cleanup & Comments
+- [ ] Final Testing (End-to-End)
+- [ ] Documentation (README.md)
+- [ ] Submission Pack (Design docs, Test evidence)
