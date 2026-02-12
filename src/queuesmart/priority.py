@@ -2,33 +2,33 @@ import datetime
 
 def calculate_priority_score(ticket_row):
     """
-    Calculates the priority score for a ticket based on business rules.
+    Works out how urgent a request is by assigning it a score based on rules.
     
-    Rules:
-    - Base: Critical (+50), High (+30)
-    - Aging: +1 per hour after 24 hours
-    - Category: Housing (+10)
-    - Vulnerability: Customer is vulnerable (+15)
+    The rules we use are:
+    - Very high urgency adds 50 points.
+    - High urgency adds 30 points.
+    - Requests that have been waiting for more than a day get 1 extra point for every hour past that first day.
+    - Housing-related requests get 10 extra points.
+    - If the customer is marked as 'vulnerable' (needing extra care), we add 15 points.
     """
     score = 0
     
-    # 1. Base Score
+    # 1. We check the urgency level set by staff.
     urgency = ticket_row.get('urgency', 'Low')
     if urgency == 'Critical':
         score += 50
     elif urgency == 'High':
         score += 30
         
-    # 2. Category Bonus
+    # 2. We give extra priority to Housing issues.
     if ticket_row.get('category') == 'Housing':
         score += 10
         
-    # 3. Vulnerability Bonus
-    # Note: 'is_vulnerable' should be part of ticket_row (joined from customers)
+    # 3. We give extra priority to customers who need more support.
     if ticket_row.get('is_vulnerable', 0):
         score += 15
         
-    # 4. Aging Bonus
+    # 4. We give extra priority to older requests that have been waiting a long time.
     created_at_str = ticket_row.get('created_at')
     if created_at_str:
         try:
@@ -38,20 +38,20 @@ def calculate_priority_score(ticket_row):
             hours_old = diff.total_seconds() / 3600
             
             if hours_old > 24:
-                # 1 point for every hour past 24
+                # We add 1 point for every hour the request has been waiting past its first 24 hours.
                 score += int(hours_old - 24)
         except ValueError:
-            pass # Handle invalid date gracefully (no bonus)
+            pass # If the date is missing or incorrect, we just don't add any extra points for age.
             
     return score
 
 def sort_tickets_by_priority(tickets_list):
     """
-    Sorts a list of tickets by their calculated priority score (Descending).
-    Also attaches the 'priority_score' to each ticket dictionary.
+    Organizes a list of requests so that the most urgent ones (the ones with the highest scores) appear at the very top.
     """
     for ticket in tickets_list:
+        # We first calculate the score for each individual request.
         ticket['priority_score'] = calculate_priority_score(ticket)
         
-    # Sort descending
+    # We then sort the list from highest score to lowest.
     return sorted(tickets_list, key=lambda x: x['priority_score'], reverse=True)

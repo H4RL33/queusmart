@@ -7,6 +7,7 @@ from queuesmart.cli.actions import (
 from queuesmart.cli.reporting_cli import reporting_menu
 
 def customer_menu():
+    """Shows a list of options for managing customers, like adding a new one or searching for an existing one."""
     while True:
         clear_screen()
         print_header("CUSTOMER MANAGEMENT")
@@ -14,6 +15,7 @@ def customer_menu():
         print("2. Search Customers")
         print("3. Back")
         
+        # We wait for the user to pick an option from the list.
         choice = get_valid_input("\nSelect Option: ", valid_options=["1", "2", "3"])
         
         if choice == "1":
@@ -21,9 +23,11 @@ def customer_menu():
         elif choice == "2":
             search_customer_flow()
         elif choice == "3":
+            # This returns the user to the main menu.
             break
 
 def ticket_menu(user):
+    """Shows a list of options for managing help requests (tickets), including creating them and updating their status."""
     while True:
         clear_screen()
         print_header("TICKET MANAGEMENT")
@@ -44,6 +48,7 @@ def ticket_menu(user):
             break
 
 def appointment_menu(user):
+    """Shows options for booking meetings or viewing the team's schedule."""
     while True:
         clear_screen()
         print_header("APPOINTMENT MANAGEMENT")
@@ -61,8 +66,10 @@ def appointment_menu(user):
             break
 
 def main_menu(user):
+    """The primary navigation list that appears after login, showing the different sections of the system."""
     while True:
         clear_screen()
+        # We show the main options and adjust them based on whether the person is a Manager or a Staff member.
         print_header(f"MAIN MENU - {user['role'].upper()}")
         
         print("1. Customers")
@@ -71,11 +78,13 @@ def main_menu(user):
         print("4. Reporting")
         
         if user['role'] == "Manager":
+            # Managers get an extra option to create new user accounts.
             print("5. Register New User")
             print("6. Logout")
         else:
             print("5. Logout")
         
+        # We set which numbers are valid to press based on the user's role.
         valid_opts = ["1", "2", "3", "4", "5"]
         if user['role'] == "Manager":
             valid_opts.append("6")
@@ -94,6 +103,6 @@ def main_menu(user):
             if user['role'] == "Manager":
                 register_user_flow()
             else:
-                return
+                return # Logging out.
         elif choice == "6" and user['role'] == "Manager":
-            return
+            return # Logging out.

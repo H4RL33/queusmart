@@ -4,14 +4,10 @@ from queuesmart.database import get_db_connection
 
 def get_tickets_per_week_by_category():
     """
-    Returns a list of dictionaries with:
-    - week_start (text date)
-    - category
-    - count
+    Counts how many requests were made each week, grouped by the type of help requested (like Housing or Benefits).
     """
     conn = get_db_connection()
-    # SQLite 'strftime' with '%W' can get the week number, but '%Y-%W' can be tricky for sorting.
-    # Let's simple format created_at as YYYY-WW.
+    # We look through our records and group requests by the week they were created and their category.
     query = """
         SELECT 
             strftime('%Y-%W', created_at) as week,
@@ -27,14 +23,10 @@ def get_tickets_per_week_by_category():
 
 def get_avg_close_time_by_category():
     """
-    Returns a list of dictionaries with:
-    - category
-    - avg_hours (float)
+    Calculates the average number of hours it took to resolve requests in each category.
     """
     conn = get_db_connection()
-    # We allow SQLite to compute partial stat, but time diff is easier in Python 
-    # if we want precision, or we can use julian day diff in SQLite.
-    # (julianday(closed_at) - julianday(created_at)) * 24 gives hours.
+    # We compare the time a request was opened with the time it was closed to find out how long it was active.
     query = """
         SELECT 
             category,
@@ -46,10 +38,10 @@ def get_avg_close_time_by_category():
     rows = conn.execute(query).fetchall()
     conn.close()
     
-    # Format the float to be nicer? Or let UI handle it.
     results = []
     for row in rows:
         r = dict(row)
+        # We round the hours to two decimal places to make the numbers easier to read.
         if r['avg_hours']:
             r['avg_hours'] = round(r['avg_hours'], 2)
         else:
@@ -60,11 +52,10 @@ def get_avg_close_time_by_category():
 
 def get_busiest_appointment_days():
     """
-    Returns top 5 busiest dates (or days of week) by number of appointments.
-    Let's go with specific dates as 'days/times' usually implies identifying hotspots.
+    Identifies the 5 days with the most scheduled meetings, helping managers see when the team is most occupied.
     """
     conn = get_db_connection()
-    # Extract just the date part YYYY-MM-DD
+    # We count how many meetings are scheduled for each specific date in our calendar.
     query = """
         SELECT 
             substr(start_time, 1, 10) as date,
@@ -80,12 +71,13 @@ def get_busiest_appointment_days():
 
 def export_to_csv(data, filename):
     """
-    Exports a list of dictionaries to a CSV file.
+    Saves a report as a spreadsheet file (CSV) so it can be opened and viewed in other programs like Microsoft Excel.
     """
     if not data:
         return False
         
     try:
+        # We take the list of information and write it row-by-row into a new file on the computer.
         keys = data[0].keys()
         with open(filename, 'w', newline='') as output_file:
             dict_writer = csv.DictWriter(output_file, fieldnames=keys)
@@ -93,4 +85,4 @@ def export_to_csv(data, filename):
             dict_writer.writerows(data)
         return True
     except IOError:
-        return False
+        return False # This happens if the system can't save the file (e.g., if it's already open elsewhere).

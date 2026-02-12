@@ -2,7 +2,7 @@ import tkinter as tk
 import sys
 import os
 
-# Ensure src is in path if running directly
+# This ensures the program can find its necessary components when started from the graphical interface folder.
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../'))
 
 from queuesmart.database import init_db, seed_default_user
@@ -11,46 +11,60 @@ from queuesmart.gui.auth import LoginFrame
 from queuesmart.gui.dashboard import DashboardFrame
 
 class QueueSmartApp(tk.Tk):
+    """
+    This class represents the main visual window of the application. 
+    It acts as the 'container' for everything the user sees and handles moving between different screens, like switching from the login page to the dashboard.
+    """
     def __init__(self):
         super().__init__()
         self.title("QueueSmart System")
+        # We make sure the window appears in the middle of the computer screen.
         center_window(self)
         
         self.current_user = None
+        # We prepare the system folders and default accounts.
         self.init_system()
         
+        # We start by showing the login screen.
         self.show_login()
 
     def init_system(self):
-        """Initialize database and default values."""
+        """Prepares the system by setting up the database and default accounts before the window opens."""
         try:
             init_db()
             seed_default_user()
         except Exception as e:
+            # If there is a problem starting up, we print an error message.
             print(f"Startup Error: {e}")
 
     def show_login(self):
-        """Displays the login screen."""
+        """Clears the window and displays the login screen for staff."""
         self.current_user = None
-        clear_frame(self)
-        self.login_frame = LoginFrame(self, self.on_login_success)
+        self.show_frame(LoginFrame, self.on_login_success)
 
     def on_login_success(self, user):
-        """Callback for successful login."""
+        """Remembers who has logged in and then takes them to the main dashboard."""
         self.current_user = user
-        clear_frame(self)
         self.show_dashboard()
 
     def show_dashboard(self):
-        """Displays the main dashboard."""
-        self.dashboard_frame = DashboardFrame(self, self.current_user, self.show_login)
+        """Displays the main dashboard where staff can see their options."""
+        self.show_frame(DashboardFrame, self.current_user, self.show_login)
 
     def show_frame(self, frame_class, *args, **kwargs):
-        """Helper to switch frames genericly (planned for future use)."""
+        """
+        A general helper that cleans the current screen and sets up a new one.
+        For example, it is used when switching from a list of customers to an 'Add Customer' form.
+        """
+        # We stop the 'Enter' key from doing anything before we switch screens to avoid mistakes.
+        self.unbind("<Return>")
+        # We remove everything currently visible in the window.
         clear_frame(self)
+        # We create and show the new screen.
         frame = frame_class(self, *args, **kwargs)
         return frame
 
 if __name__ == "__main__":
+    # This line starts the visual application and keeps it running until the user closes the window.
     app = QueueSmartApp()
     app.mainloop()

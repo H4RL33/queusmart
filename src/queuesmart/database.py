@@ -4,23 +4,24 @@ import os
 import datetime
 from typing import Optional, List, Dict, Union
 
+# This is the name of the file where all the system's information is stored.
 DB_NAME = "queuesmart.db"
 
 def get_db_connection():
-    """Establishes a connection to the SQLite database."""
+    """Opens the digital filing cabinet where all system information is kept."""
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row  # Access columns by name
+    conn.row_factory = sqlite3.Row  # This allows us to find information by using the name of the column.
     return conn
 
 def init_db():
-    """Initializes the database with the required tables."""
+    """Sets up the digital filing cabinet by creating separate folders (tables) for staff, customers, tickets, and appointments."""
     conn = get_db_connection()
     c = conn.cursor()
     
-    # Enable foreign keys
+    # This ensures that all information is correctly linked between different folders.
     c.execute("PRAGMA foreign_keys = ON;")
 
-    # Users Table
+    # Folder for Staff and Manager accounts.
     c.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,7 +32,7 @@ def init_db():
         )
     ''')
     
-    # Customers Table
+    # Folder for Customer contact details and status.
     c.execute('''
         CREATE TABLE IF NOT EXISTS customers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +44,7 @@ def init_db():
         )
     ''')
 
-    # Tickets Table
+    # Folder for Support Tickets where requests for help are tracked.
     c.execute('''
         CREATE TABLE IF NOT EXISTS tickets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +62,7 @@ def init_db():
         )
     ''')
 
-    # Appointments Table
+    # Folder for Appointments to manage meetings between customers and staff.
     c.execute('''
         CREATE TABLE IF NOT EXISTS appointments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +76,7 @@ def init_db():
         )
     ''')
 
-    # Audit Logs Table
+    # Folder for the Audit Log, which records every major change made in the system.
     c.execute('''
         CREATE TABLE IF NOT EXISTS audit_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,35 +88,32 @@ def init_db():
         )
     ''')
 
-    # MIGRATION: Ensure tickets table has closed_at column (for existing DBs)
+    # This part updates old versions of the filing cabinet to make sure they have space for 'closing dates' on tickets.
     try:
         c.execute("ALTER TABLE tickets ADD COLUMN closed_at TEXT")
     except sqlite3.OperationalError:
-        # Column likely already exists
+        # The space already exists.
         pass
 
     conn.commit()
     conn.close()
 
-# --- User & Authentication Functions ---
+# --- Functions for managing people and security ---
 
 def hash_password(password: str, salt: bytes = None) -> (str, str):
-    """Hashes a password with a salt."""
+    """Scrambles a password into a secret code that can't be read by people, keeping it safe if anyone sees the files."""
     if salt is None:
         salt = os.urandom(16)
     else:
-        # If salt implies hex string from DB, decode it? 
-        # Actually better to treat input salt as bytes if passed, or hex if string.
-        # Let's standardize: Internal function uses bytes, storage uses hex.
         if isinstance(salt, str):
             salt = bytes.fromhex(salt)
             
-    # Use PBKDF2 for secure hashing
+    # We use a high-security method to mix the password with a random 'salt' to create the final secret code.
     pwd_hash = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
     return pwd_hash.hex(), salt.hex()
 
-def add_user(username, password, role):
-    """Adds a new user to the database."""
+def add_user(username, password, role, created_by_user_id=None):
+    """Adds a new person to the system by storing their name and their scrambled password."""
     pwd_hash, salt = hash_password(password)
     
     conn = get_db_connection()
@@ -124,15 +122,17 @@ def add_user(username, password, role):
             "INSERT INTO users (username, password_hash, salt, role) VALUES (?, ?, ?, ?)",
             (username, pwd_hash, salt, role)
         )
+        if created_by_user_id:
+            log_action_conn(conn, created_by_user_id, "ADD_USER", f"Created user '{username}' with role '{role}'")
         conn.commit()
         return True
     except sqlite3.IntegrityError:
-        return False  # Username exists
+        return False  # Someone already has this name.
     finally:
         conn.close()
 
 def authenticate_user(username, password):
-    """Verifies credentials and returns user details if valid."""
+    """Checks if the name and password entered match what we have in our digital filing cabinet."""
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
     conn.close()
@@ -141,31 +141,94 @@ def authenticate_user(username, password):
         stored_hash = user['password_hash']
         salt = user['salt']
         
-        # Verify
+        # We scramble the entered password and see if it matches the scrambled code we saved earlier.
         check_hash, _ = hash_password(password, salt)
         if check_hash == stored_hash:
             return dict(user)
     return None
 
+def get_all_users():
+    """Gives a list of everyone who can use the system, but keeps their secret passwords hidden."""
+    conn = get_db_connection()
+    rows = conn.execute("SELECT id, username, role FROM users").fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def update_user(user_id, username=None, role=None, password=None, updated_by_user_id=None):
+    """Changes someone's details, like their name or their job title (role), in the system's records."""
+    conn = get_db_connection()
+    
+    fields = []
+    values = []
+    
+    if username:
+        fields.append("username = ?")
+        values.append(username)
+    if role:
+        fields.append("role = ?")
+        values.append(role)
+    if password:
+        pwd_hash, salt = hash_password(password)
+        fields.append("password_hash = ?")
+        values.append(pwd_hash)
+        fields.append("salt = ?")
+        values.append(salt)
+        
+    if not fields:
+        conn.close()
+        return False
+        
+    values.append(user_id)
+    query = f"UPDATE users SET {', '.join(fields)} WHERE id = ?"
+    
+    try:
+        conn.execute(query, values)
+        if updated_by_user_id:
+            log_action_conn(conn, updated_by_user_id, "UPDATE_USER", f"Updated user ID {user_id}: {', '.join(fields)}")
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False # The new name chosen is already taken.
+    finally:
+        conn.close()
+
+def delete_user(user_id, deleted_by_user_id=None):
+    """Removes a person from the system, as long as they aren't currently tied to any active work."""
+    conn = get_db_connection()
+    try:
+        # We find their name first so we can record who was deleted in the audit log.
+        user = conn.execute("SELECT username FROM users WHERE id = ?", (user_id,)).fetchone()
+        username = user['username'] if user else "Unknown"
+
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        
+        if deleted_by_user_id:
+            log_action_conn(conn, deleted_by_user_id, "DELETE_USER", f"Deleted user '{username}' (ID: {user_id})")
+            
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError("Cannot delete user with assigned tickets or appointments.")
+    finally:
+        conn.close()
+
 def seed_default_user():
-    """Seeds a default manager if 'admin' does not exist."""
+    """Makes sure there is at least one 'admin' person who can start using the system for the first time."""
     conn = get_db_connection()
     user = conn.execute("SELECT * FROM users WHERE username = 'admin'").fetchone()
     
     if not user:
-        # We need to call add_user via internal logic or direct SQL to avoid circular imports if add_user is used?
-        # add_user is defined above, so we can use it.
-        # However, add_user opens its own connection.
         conn.close()
         add_user("admin", "admin123", "Manager")
         print("Default user created: admin / admin123")
     else:
         conn.close()
 
-# --- Customer Functions ---
+# --- Functions for managing Customer information ---
 
 def add_customer(name, phone, email, preferred_contact, is_vulnerable=False):
-    """Adds a new customer."""
+    """Adds a new customer's details (like name and phone) to our records."""
     conn = get_db_connection()
     cursor = conn.execute(
         "INSERT INTO customers (name, phone, email, preferred_contact, is_vulnerable) VALUES (?, ?, ?, ?, ?)",
@@ -177,7 +240,7 @@ def add_customer(name, phone, email, preferred_contact, is_vulnerable=False):
     return customer_id
 
 def update_customer(customer_id, name, phone, email, preferred_contact, is_vulnerable):
-    """Updates customer details."""
+    """Changes a customer's information if it has been updated in real life."""
     conn = get_db_connection()
     conn.execute(
         "UPDATE customers SET name=?, phone=?, email=?, preferred_contact=?, is_vulnerable=? WHERE id=?",
@@ -186,14 +249,18 @@ def update_customer(customer_id, name, phone, email, preferred_contact, is_vulne
     conn.commit()
     conn.close()
 
-def delete_customer(customer_id):
-    """Deletes a customer."""
+def delete_customer(customer_id, user_id=None):
+    """Removes a customer from our records, as long as we don't need their history for tickets or meetings."""
     conn = get_db_connection()
     try:
-        # Note: Foreign Key constraints might block this if tickets/appointments exist.
-        # SQLite foreign_keys is ON. Cascade delete is NOT set in schema.
-        # We should probably fail if data exists, to preserve history.
+        cust = conn.execute("SELECT name FROM customers WHERE id = ?", (customer_id,)).fetchone()
+        name = cust['name'] if cust else "Unknown"
+
         conn.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
+        
+        if user_id:
+            log_action_conn(conn, user_id, "DELETE_CUSTOMER", f"Deleted customer '{name}' (ID: {customer_id})")
+            
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -201,7 +268,7 @@ def delete_customer(customer_id):
     conn.close()
 
 def search_customers(query):
-    """Searches customers by name, phone, or email."""
+    """Finds customers by looking for their name, phone number, or email address in our files."""
     conn = get_db_connection()
     q = f"%{query}%"
     rows = conn.execute(
@@ -211,10 +278,30 @@ def search_customers(query):
     conn.close()
     return [dict(row) for row in rows]
 
-# --- Ticket Functions ---
+def get_customer_history(customer_id):
+    """Collects a list of every ticket and meeting a customer has ever had with us."""
+    conn = get_db_connection()
+    
+    tickets = conn.execute(
+        "SELECT * FROM tickets WHERE customer_id = ? ORDER BY created_at DESC",
+        (customer_id,)
+    ).fetchall()
+    
+    appts = conn.execute(
+        "SELECT a.*, u.username as staff_name FROM appointments a JOIN users u ON a.staff_id = u.id WHERE customer_id = ? ORDER BY start_time DESC",
+        (customer_id,)
+    ).fetchall()
+    
+    conn.close()
+    return {
+        'tickets': [dict(t) for t in tickets],
+        'appointments': [dict(a) for a in appts]
+    }
+
+# --- Functions for managing Help Requests (Tickets) ---
 
 def create_ticket(customer_id, category, description, urgency, created_by_user_id=None):
-    """Creates a new support ticket."""
+    """Starts a new request for help for a customer and records the date and time it began."""
     conn = get_db_connection()
     created_at = datetime.datetime.now().isoformat()
     status = "Open"
@@ -227,7 +314,6 @@ def create_ticket(customer_id, category, description, urgency, created_by_user_i
     conn.commit()
     ticket_id = cursor.lastrowid
     
-    # Log action if user is known
     if created_by_user_id:
         log_action_conn(conn, created_by_user_id, "CREATE_TICKET", f"Ticket ID {ticket_id} created for Customer {customer_id}")
         
@@ -235,10 +321,9 @@ def create_ticket(customer_id, category, description, urgency, created_by_user_i
     return ticket_id
 
 def update_ticket(ticket_id, status=None, assigned_staff_id=None, resolution=None, user_id=None):
-    """Updates ticket details."""
+    """Changes the status of a request (like moving it from 'Open' to 'Closed') and records any final notes."""
     conn = get_db_connection()
     
-    # Build dynamic query
     fields = []
     values = []
     
@@ -252,7 +337,7 @@ def update_ticket(ticket_id, status=None, assigned_staff_id=None, resolution=Non
         fields.append("resolution = ?")
         values.append(resolution)
     
-    # Auto-set closed_at if status is changing to Closed
+    # We automatically record the time a ticket is closed.
     if status == "Closed":
         fields.append("closed_at = ?")
         values.append(datetime.datetime.now().isoformat())
@@ -276,15 +361,17 @@ def update_ticket(ticket_id, status=None, assigned_staff_id=None, resolution=Non
     conn.close()
     return True
 
-def delete_ticket(ticket_id):
-    """Deletes a ticket."""
+def delete_ticket(ticket_id, user_id=None):
+    """Permanently removes a request for help from our records."""
     conn = get_db_connection()
+    if user_id:
+        log_action_conn(conn, user_id, "DELETE_TICKET", f"Deleted Ticket ID {ticket_id}")
     conn.execute("DELETE FROM tickets WHERE id = ?", (ticket_id,))
     conn.commit()
     conn.close()
 
 def get_tickets(status_filter=None, staff_filter=None):
-    """Retrieves tickets with optional filters."""
+    """Shows a list of requests for help, with the option to filter by their status or the staff member assigned to them."""
     conn = get_db_connection()
     query = "SELECT t.*, c.name as customer_name, c.is_vulnerable FROM tickets t JOIN customers c ON t.customer_id = c.id"
     params = []
@@ -305,7 +392,7 @@ def get_tickets(status_filter=None, staff_filter=None):
     return [dict(row) for row in rows]
 
 def search_tickets(query):
-    """Searches tickets by description or customer name."""
+    """Finds requests for help by looking for keywords in the description or the customer's name."""
     conn = get_db_connection()
     q = f"%{query}%"
     sql = """
@@ -318,15 +405,14 @@ def search_tickets(query):
     conn.close()
     return [dict(row) for row in rows]
 
-# --- Appointment Functions ---
+# --- Functions for managing Appointments ---
 
 def check_clash(staff_id, start_time_str, duration_minutes):
-    """Checks if a staff member is already booked."""
+    """Looks through the calendar to make sure a staff member isn't being booked for two different meetings at the same time."""
     new_start = datetime.datetime.fromisoformat(start_time_str)
     new_end = new_start + datetime.timedelta(minutes=duration_minutes)
     
     conn = get_db_connection()
-    # Get all appointments for this staff member
     appointments = conn.execute("SELECT start_time, duration_minutes FROM appointments WHERE staff_id = ?", (staff_id,)).fetchall()
     conn.close()
     
@@ -334,14 +420,14 @@ def check_clash(staff_id, start_time_str, duration_minutes):
         exist_start = datetime.datetime.fromisoformat(appt['start_time'])
         exist_end = exist_start + datetime.timedelta(minutes=appt['duration_minutes'])
         
-        # Overlap logic: (StartA < EndB) and (EndA > StartB)
+        # We check if the new meeting starts before an old one ends, and ends after an old one starts.
         if new_start < exist_end and new_end > exist_start:
-            return True # Clash found
+            return True # A scheduling conflict was found.
             
     return False
 
 def create_appointment(customer_id, staff_id, start_time, duration_minutes, reason, created_by_user_id=None):
-    """Creates an appointment if no clash exists."""
+    """Books a new meeting between a customer and a staff member after making sure there's no scheduling conflict."""
     if check_clash(staff_id, start_time, duration_minutes):
         raise ValueError("Appointment clash detected for this staff member.")
         
@@ -360,15 +446,17 @@ def create_appointment(customer_id, staff_id, start_time, duration_minutes, reas
     conn.close()
     return appt_id
 
-def delete_appointment(appt_id):
-    """Deletes an appointment."""
+def delete_appointment(appt_id, user_id=None):
+    """Cancels a meeting and removes it from the calendar."""
     conn = get_db_connection()
+    if user_id:
+        log_action_conn(conn, user_id, "DELETE_APPT", f"Cancelled Appointment ID {appt_id}")
     conn.execute("DELETE FROM appointments WHERE id = ?", (appt_id,))
     conn.commit()
     conn.close()
 
 def get_appointments_by_staff(staff_id):
-    """Gets appointments for a specific staff member."""
+    """Shows a list of all meetings a specific staff member has scheduled, ordered by the time they start."""
     conn = get_db_connection()
     rows = conn.execute(
         "SELECT a.*, c.name as customer_name FROM appointments a JOIN customers c ON a.customer_id = c.id WHERE staff_id = ? ORDER BY start_time",
@@ -377,16 +465,16 @@ def get_appointments_by_staff(staff_id):
     conn.close()
     return [dict(row) for row in rows]
 
-# --- Audit Logging ---
+# --- Functions for tracking system history (Auditing) ---
 
 def log_action(user_id, action, details):
-    """Logs a system action."""
+    """Keeps a permanent record of who did what and when, ensuring we can always see the history of changes in the system."""
     conn = get_db_connection()
     log_action_conn(conn, user_id, action, details)
     conn.close()
 
 def log_action_conn(conn, user_id, action, details):
-    """Helper to log within an existing connection/transaction."""
+    """Helper to record a change while the system is already working on another task."""
     timestamp = datetime.datetime.now().isoformat()
     conn.execute(
         "INSERT INTO audit_logs (user_id, action, timestamp, details) VALUES (?, ?, ?, ?)",
