@@ -370,19 +370,22 @@ def delete_ticket(ticket_id, user_id=None):
     conn.commit()
     conn.close()
 
-def get_tickets(status_filter=None, staff_filter=None):
-    """Shows a list of requests for help, with the option to filter by their status or the staff member assigned to them."""
+def get_tickets(status_filter=None, staff_filter=None, category_filter=None):
+    """Shows a list of requests for help, with the option to filter by status, assigned staff, or category."""
     conn = get_db_connection()
     query = "SELECT t.*, c.name as customer_name, c.is_vulnerable FROM tickets t JOIN customers c ON t.customer_id = c.id"
     params = []
     conditions = []
     
-    if status_filter:
+    if status_filter and status_filter != "All":
         conditions.append("t.status = ?")
         params.append(status_filter)
     if staff_filter:
         conditions.append("t.assigned_staff_id = ?")
         params.append(staff_filter)
+    if category_filter and category_filter != "All":
+        conditions.append("t.category = ?")
+        params.append(category_filter)
         
     if conditions:
         query += " WHERE " + " AND ".join(conditions)

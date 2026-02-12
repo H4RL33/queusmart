@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import messagebox
 from queuesmart.gui.utils import clear_frame
 
 class DashboardFrame(tk.Frame):
@@ -16,6 +17,11 @@ class DashboardFrame(tk.Frame):
         header.pack(fill="x")
         
         tk.Label(header, text=f"QueueSmart Dashboard - {user['role']}", fg="white", bg="#333", font=("Helvetica", 14, "bold")).pack(side="left", padx=20, pady=10)
+        
+        # Accessibility Toggle
+        self.large_text = False
+        tk.Button(header, text="Toggle Large Text", command=self.toggle_accessibility, bg="#607D8B", fg="white").pack(side="right", padx=10, pady=10)
+        
         tk.Button(header, text="Logout", command=self.logout, bg="red", fg="white").pack(side="right", padx=20, pady=10)
         
         # We display a welcoming message with the staff member's name.
@@ -72,3 +78,23 @@ class DashboardFrame(tk.Frame):
         """Takes a manager to the screen where they can add, edit, or remove staff accounts."""
         from queuesmart.gui.users import UserManagementFrame
         self.master.show_frame(UserManagementFrame, self.user)
+
+    def toggle_accessibility(self):
+        """Switches between normal and large text sizes to help users with visual impairments."""
+        from tkinter import font
+        self.large_text = not self.large_text
+        
+        default_font = font.nametofont("TkDefaultFont")
+        text_font = font.nametofont("TkTextFont")
+        menu_font = font.nametofont("TkMenuFont")
+        
+        if self.large_text:
+            size = 14
+        else:
+            size = 10 # Standard default
+            
+        default_font.configure(size=size)
+        text_font.configure(size=size)
+        menu_font.configure(size=size)
+        
+        messagebox.showinfo("Accessibility", f"Text size set to {'Large' if self.large_text else 'Standard'}.")

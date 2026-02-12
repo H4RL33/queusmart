@@ -75,19 +75,16 @@ def main_menu(user):
         print("1. Customers")
         print("2. Tickets")
         print("3. Appointments")
-        print("4. Reporting")
         
         if user['role'] == "Manager":
-            # Managers get an extra option to create new user accounts.
+            # Managers get extra options for reporting and creating new user accounts.
+            print("4. Reporting")
             print("5. Register New User")
             print("6. Logout")
+            valid_opts = ["1", "2", "3", "4", "5", "6"]
         else:
-            print("5. Logout")
-        
-        # We set which numbers are valid to press based on the user's role.
-        valid_opts = ["1", "2", "3", "4", "5"]
-        if user['role'] == "Manager":
-            valid_opts.append("6")
+            print("4. Logout")
+            valid_opts = ["1", "2", "3", "4"]
             
         choice = get_valid_input("\nSelect Option: ", valid_options=valid_opts)
         
@@ -98,11 +95,11 @@ def main_menu(user):
         elif choice == "3":
             appointment_menu(user)
         elif choice == "4":
-            reporting_menu()
-        elif choice == "5":
             if user['role'] == "Manager":
-                register_user_flow()
+                reporting_menu()
             else:
                 return # Logging out.
+        elif choice == "5" and user['role'] == "Manager":
+            register_user_flow()
         elif choice == "6" and user['role'] == "Manager":
             return # Logging out.

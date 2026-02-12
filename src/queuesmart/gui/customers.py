@@ -1,5 +1,6 @@
+import csv
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from queuesmart.database import add_customer, update_customer, delete_customer, search_customers, get_customer_history
 from queuesmart.gui.utils import clear_frame, ToolTip
 
@@ -30,7 +31,10 @@ class CustomerListFrame(tk.Frame):
         tk.Button(action_bar, text="+ Add Customer", command=self.go_add_customer, bg="#4CAF50").pack(side="right")
         tk.Button(action_bar, text="Edit Selected", command=self.go_edit_customer, bg="#2196F3").pack(side="right", padx=5)
         tk.Button(action_bar, text="Delete Selected", command=self.delete_selected, bg="#F44336").pack(side="right", padx=5)
-        tk.Button(action_bar, text="View History", command=self.go_view_history, bg="#FF9800").pack(side="right")
+        tk.Button(action_bar, text="View History", command=self.go_view_history, bg="#FF9800").pack(side="right", padx=5)
+        
+        if self.user['role'] == 'Manager':
+            tk.Button(action_bar, text="Import CSV", command=self.import_csv, bg="#9C27B0", fg="white").pack(side="right")
         
         # A table to display the customer records.
         columns = ("ID", "Name", "Phone", "Email", "Vulnerable")
@@ -107,6 +111,33 @@ class CustomerListFrame(tk.Frame):
         c_id = item['values'][0]
         c_name = item['values'][1]
         self.master.show_frame(CustomerHistoryFrame, self.user, c_id, c_name)
+
+    def import_csv(self):
+        """Allows a manager to select a CSV file and bulk-add customers to the system."""
+        file_path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
+        if not file_path:
+            return
+            
+        try:
+            count = 0
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # We look for specific column names in the spreadsheet.
+                    name = row.get('name') or row.get('Name')
+                    phone = row.get('phone') or row.get('Phone') or ""
+                    email = row.get('email') or row.get('Email') or ""
+                    contact = row.get('preferred_contact') or row.get('Contact Method') or "Phone"
+                    vuln = row.get('is_vulnerable') or row.get('Vulnerable') or "0"
+                    
+                    if name:
+                        add_customer(name, phone, email, contact, str(vuln).lower() in ('1', 'yes', 'true', 'y'))
+                        count += 1
+            
+            messagebox.showinfo("Success", f"Successfully imported {count} customers.")
+            self.perform_search()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to import CSV: {e}")
 
     def delete_selected(self):
         """Permanently removes a customer's record from the system."""

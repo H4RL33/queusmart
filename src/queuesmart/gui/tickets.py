@@ -24,14 +24,33 @@ class TicketListFrame(tk.Frame):
         action_bar = tk.Frame(self)
         action_bar.pack(fill="x", padx=10, pady=10)
         
+        # Search
+        search_frame = tk.LabelFrame(action_bar, text="Keyword Search", padx=5, pady=5)
+        search_frame.pack(side="left", padx=(0, 10))
         self.search_var = tk.StringVar()
-        tk.Entry(action_bar, textvariable=self.search_var, width=30).pack(side="left", padx=(0, 10))
-        tk.Button(action_bar, text="Search", command=self.search_tickets).pack(side="left")
+        tk.Entry(search_frame, textvariable=self.search_var, width=20).pack(side="left", padx=(0, 5))
+        tk.Button(search_frame, text="Search", command=self.search_tickets).pack(side="left")
         
-        # We have buttons to update, delete, or create a new request.
-        tk.Button(action_bar, text="Update", command=self.go_update, bg="#2196F3").pack(side="right", padx=5)
-        tk.Button(action_bar, text="Delete", command=self.delete_selected, bg="#F44336").pack(side="right", padx=5)
-        tk.Button(action_bar, text="+ New", command=self.go_create, bg="#4CAF50").pack(side="right")
+        # Filters
+        filter_frame = tk.LabelFrame(action_bar, text="Filters", padx=5, pady=5)
+        filter_frame.pack(side="left")
+        
+        tk.Label(filter_frame, text="Status:").pack(side="left", padx=(5, 0))
+        self.status_filter_var = tk.StringVar(value="All")
+        status_menu = tk.OptionMenu(filter_frame, self.status_filter_var, "All", "Open", "In Progress", "Waiting", "Closed", command=lambda _: self.load_data())
+        status_menu.pack(side="left")
+        
+        tk.Label(filter_frame, text="Category:").pack(side="left", padx=(10, 0))
+        self.category_filter_var = tk.StringVar(value="All")
+        cat_menu = tk.OptionMenu(filter_frame, self.category_filter_var, "All", "Housing", "Benefits", "Digital Support", "Wellbeing", "Other", command=lambda _: self.load_data())
+        cat_menu.pack(side="left")
+        
+        # Action Buttons
+        btn_frame = tk.Frame(action_bar)
+        btn_frame.pack(side="right")
+        tk.Button(btn_frame, text="+ New", command=self.go_create, bg="#4CAF50", width=10).pack(side="top", pady=2)
+        tk.Button(btn_frame, text="Update", command=self.go_update, bg="#2196F3", width=10).pack(side="top", pady=2)
+        tk.Button(btn_frame, text="Delete", command=self.delete_selected, bg="#F44336", width=10).pack(side="top", pady=2)
         
         # A table to display the details of each ticket.
         columns = ("ID", "Customer", "Category", "Urgency", "Status", "Priority")
@@ -54,8 +73,11 @@ class TicketListFrame(tk.Frame):
         
     def load_data(self):
         """Collects all tickets from our records, calculates their priority scores, and displays them in the table."""
-        # We ask the database for all currently active tickets.
-        tickets = get_tickets()
+        # We ask the database for tickets, applying any active filters.
+        tickets = get_tickets(
+            status_filter=self.status_filter_var.get(),
+            category_filter=self.category_filter_var.get()
+        )
         # We sort them so that the most urgent ones appear at the top of the list.
         sorted_tickets = sort_tickets_by_priority(tickets)
         
