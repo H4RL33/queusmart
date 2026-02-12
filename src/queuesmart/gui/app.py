@@ -9,6 +9,7 @@ from queuesmart.database import init_db, seed_default_user
 from queuesmart.gui.utils import center_window, clear_frame
 from queuesmart.gui.auth import LoginFrame
 from queuesmart.gui.dashboard import DashboardFrame
+from queuesmart.utils import print_logo
 
 class QueueSmartApp(tk.Tk):
     """
@@ -16,6 +17,9 @@ class QueueSmartApp(tk.Tk):
     It acts as the 'container' for everything the user sees and handles moving between different screens, like switching from the login page to the dashboard.
     """
     def __init__(self):
+        # We display the QueueSmart ASCII logo in the terminal.
+        print_logo()
+        
         super().__init__()
         self.title("QueueSmart System")
         # We make sure the window appears in the middle of the computer screen.

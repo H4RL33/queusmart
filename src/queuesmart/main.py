@@ -7,12 +7,16 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from queuesmart.database import init_db, add_user, get_db_connection, seed_default_user
 from queuesmart.cli.auth import login_loop
 from queuesmart.cli.menus import main_menu
+from queuesmart.utils import print_logo
 
 def main():
     """
     This is the starting point of the entire application. 
     It prepares the digital filing cabinet, makes sure an 'admin' user exists, and then starts the login screen so staff can begin their work.
     """
+    # We display the QueueSmart ASCII logo in the terminal.
+    print_logo()
+    
     try:
         # 1. We set up the digital folders and tables where all information will be saved.
         init_db()
